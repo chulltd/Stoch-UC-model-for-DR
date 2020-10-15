@@ -1,6 +1,8 @@
 # combine_run_results.R
-# reads in output from model (via loadTimeseriesData() in mergeTimeseriesData.R)
+# reads in output from one simulation (a set of periods with same parameters) 
+# from ercot_stoch.jl model (via loadTimeseriesData() in mergeTimeseriesData.R)
 # extracts key outputs, makes a few graphs, and saves key numbers in a csv
+# Also saves csvs with combined output from all time windows modeled in this simulation.
 # also indicates if any runs were missing (and fails if so), saving a csv of that info
 # march 2019
 # Patricia levi
@@ -13,19 +15,11 @@ library(data.table)
 
 options(warn=1) # print warnings as they occur
 
-SHRLK = TRUE
-
 ## FILE STRUCTURE ##
-if(SHRLK){
-  baseFol = "/home/users/pjlevi/dr_stoch_uc/julia_ver/"
-  outputFolBase = "/home/groups/weyant/plevi_outputs/"#slowgas/"
-  inputFol = "inputs/"
-} else{
-  baseFol = "/Users/patricia/Documents/Google Drive/stanford/Value of DR Project/"
-  outputFolBase = "/Users/patricia/Documents/Google Drive/stanford/Value of DR Project/Data/julia_output/forIAEE_1Pmin/"
-  inputFol = "Data/julia_input/"
-}
-  
+baseFol = "~/dr_stoch_uc/"
+outputFolBase = "/home/groups/weyant/plevi_outputs/"#slowgas/"
+inputFol = "inputs/"
+
 
 ## source files ##
 source(paste0(baseFol,"/code/R_Scripts/mergeTimeseriesData.R")) # contains loadTimeseriesData
@@ -34,7 +28,7 @@ source(paste0(baseFol,"/code/R_Scripts/getModelParams.R"))
 source(paste0(baseFol,"/code/R_Scripts/getProbs.R"))
 
 
-### PARAMS ####----##
+### PARAMS for testing ####----##
 # inputfolID = "5d_keyDays"
 # runID = "avail2_keyDays" #"hour1" #"avail2"
 # runDate = "2019-03-17" #this might differ across runs! need to consolidate
@@ -50,22 +44,10 @@ combineRunResults <- function(runID, runDate, graphs = T,
                               SHRLOK = SHRLK, load_override = F, endtrim = NULL){  
   
   outputID = paste0(runID,"_",runDate)
-  # instance_in_fol = paste0(base_fol,input_fol,inputfolID,"/") # TODO: inputfolID should come from inputs_file -> params$timeseriesID
   output_fol = paste0(output_fol_base,outputID,"/")
   default_in_fol = paste0(base_fol,input_fol,"ercot_default/")
   
-  # get input parameters ####
-  # TODO: instead, get this from the file that is saved alongside outputs, instead of from inputs file.
-  #       1: scrape names of all files that are inputfile*
-  #       2: assume they're all the same, read in the first one
-  #       3: massage the format of that one so that is looks like params does now. Voila!
-  # inputfilename = list.files(path = output_fol,pattern = "inputfile*")[1]
-  # inputs = read_csv(paste0(output_fol,inputfilename))
-  # trim off useless third column
-  # print(paste("inputs has ",ncol(inputs),"columns, file name is ", inputfilename))
-  # inputs = inputs[,1:2]
-  
-  params = getModelParam(run_date = runDate,run_name = runID, output_fol_base) #spread(inputs, key = input_name, value = runID) # can just put getModelParams here!
+  params = getModelParam(run_date = runDate,run_name = runID, output_fol_base) 
   params$nrandp = as.numeric(params$nrandp)
   overlaplength = as.numeric(params$overlapLength)
   if(is.null(endtrim)){
@@ -182,9 +164,6 @@ combineRunResults <- function(runID, runDate, graphs = T,
     rm(fastprod, slowprod)
     # prod header: "","GEN_IND","t","nperiod","scenario","MWout","speed","prob"
     
-    # write_csv(prod, paste0(output_fol,"prod.csv")) # cannot turn off scientific notation in write_csv
-    # prod$prob = 1/params$nrandp
-    # getProbs = function(params,inputsfol,nscenarios)
     allprobs = getProbs(params, instance_in_fol, length(unique(prod$scenario)))
     prod = merge(as.data.table(prod), as.data.table(allprobs), by.x = c("scenario","nperiod"), by.y = c("scenarionum","periodnum"), all.x=T)
     
@@ -192,11 +171,7 @@ combineRunResults <- function(runID, runDate, graphs = T,
   } else {
     print("Loading prod.csv")
     prod = read_csv(file = paste0(output_fol,"prod.csv"))
-    # prod$prob = 1/params$nrandp
-    # getProbs = function(params,inputsfol,nscenarios)
-    #TODO: first test if prob is a column in prod
-    # probably already has prob but its' wrong! so, remove prob
-    prod = select(prod, -prob)
+    prod = select(prod, -prob) #previous calculations mis-calculated prod - recalculate it
     print("starting getProbs")
     allprobs = getProbs(params, instance_in_fol, length(unique(prod$scenario)))
     print("finishing getProbs")
@@ -221,11 +196,6 @@ combineRunResults <- function(runID, runDate, graphs = T,
     group_by(scenario,speed) %>%
     mutate(ramp = MWtot - lag(MWtot, default=0))
   
-  # prodrampsummary_byscen = prodramp%>%
-  #   group_by(scenario,speed) %>%
-  #   summarise(maxramp = max(ramp),
-  #             minramp = min(ramp))
-  
   prodrampsummary_all = prodramp%>%
     group_by(speed) %>%
     summarise(maxramp = max(ramp),
@@ -241,33 +211,24 @@ combineRunResults <- function(runID, runDate, graphs = T,
     group_by(scenario,speed) %>%
     mutate(ramp = MWtot - lag(MWtot, default=0))
   
-  # prodrampsummary_byscen = prodramp%>%
-  #   group_by(scenario,speed) %>%
-  #   summarise(maxramp = max(ramp),
-  #             minramp = min(ramp))
-  
   prodrampsummary_allDR = prodramp%>%
     group_by(speed) %>%
     summarise(maxramp = max(ramp),
               minramp = min(ramp))
   prodrampsummary_all
   prodrampsummary_allDR
-  write(paste0("max fast ramp,",prodrampsummary_all$maxramp[1],"\n ",
-               "max fast ramp DR removed,",prodrampsummary_allDR$maxramp[1],"\n",
-               "min fast ramp,",prodrampsummary_all$minramp[1],"\n",
-               "min fast ramp DR removed,",prodrampsummary_allDR$minramp[1],"\n",
-               "max slow ramp,",prodrampsummary_all$maxramp[2],"\n",
-               "max slow ramp DR removed,",prodrampsummary_allDR$maxramp[2],"\n",
-               "min slow ramp,",prodrampsummary_all$minramp[2],"\n",
-               "min slow ramp DR removed,",prodrampsummary_allDR$minramp[2],"\n"),
+  write(paste0("ramp max fast,",prodrampsummary_all$maxramp[1],"\n ",
+               "ramp max fast DR removed,",prodrampsummary_allDR$maxramp[1],"\n",
+               "ramp min fast,",prodrampsummary_all$minramp[1],"\n",
+               "ramp min fast DR removed,",prodrampsummary_allDR$minramp[1],"\n",
+               "ramp max slow,",prodrampsummary_all$maxramp[2],"\n",
+               "ramp max slow DR removed,",prodrampsummary_allDR$maxramp[2],"\n",
+               "ramp min slow,",prodrampsummary_all$minramp[2],"\n",
+               "ramp min slow DR removed,",prodrampsummary_allDR$minramp[2],"\n"),
         file = paste0(output_fol,"summary_stats",runID,".csv"),append=T)  
   
-  
-  
-  
   # visualize/summarize ramp ####
-  # ggplot(prodramp,aes(x=ramp)) + geom_histogram()
-  
+
   # visualize daily max ramp
   prodramp$day = floor(prodramp$t/24)
   prodrampday = prodramp %>%
@@ -277,45 +238,14 @@ combineRunResults <- function(runID, runDate, graphs = T,
   #TODO: summarise prodramp by combining speeds first - this currently pits fast and slow against each other
   
   quants = quantile(prodrampday$daymaxramp[prodrampday$daymaxramp >0], probs = c(0.5,0.9,0.95,0.99,0.995,1), na.rm=T)
-  write(paste0("50% nonDR ramp quantile,",quants[1],"\n",
-               "90% nonDR ramp quantile,",quants[2],"\n ",
-               "95% nonDR ramp quantile,",quants[3],"\n",
-               "99% nonDR ramp quantile,",quants[4],"\n",
-               "99.5% nonDR ramp quantile,",quants[5],"\n",
-               "100% nonDR ramp quantile,",quants[6],"\n",
-               "stdev,",sd(prodrampday$daymaxramp[prodrampday$daymaxramp >0]),"\n"),
+  write(paste0("ramp 50% nonDR quantile,",quants[1],"\n",
+               "ramp 90% nonDR quantile,",quants[2],"\n ",
+               "ramp 95% nonDR quantile,",quants[3],"\n",
+               "ramp 99% nonDR quantile,",quants[4],"\n",
+               "ramp 99.5% nonDR quantile,",quants[5],"\n",
+               "ramp 100% nonDR quantile,",quants[6],"\n",
+               "ramp stdev,",sd(prodrampday$daymaxramp[prodrampday$daymaxramp >0]),"\n"),
         file = paste0(output_fol,"summary_stats",runID,".csv"),append=T)  
-  
-  
-  # ggplot(prodrampday,aes(x=daymaxramp, fill=scenario)) + geom_histogram() + 
-  #   scale_fill_viridis(discrete=T) + theme_bw() 
-  # ggplot(prodrampday,aes(x=dayminramp, fill=scenario)) + geom_histogram() + 
-  #   scale_fill_viridis(discrete=T) + theme_bw() 
-  # 
-  # # make same plots including DR... OR MAKE A PLOT OF DR RAMPS
-  # prodDR = prod1 %>%
-  #   filter(GEN_IND == "DR-1")
-  # prodramp= prodDR %>%
-  #   group_by(scenario,speed,t) %>%
-  #   summarise(MWtot = sum(MWout)) %>%
-  #   group_by(scenario,speed) %>%
-  #   mutate(ramp = MWtot - lag(MWtot, default=0))
-  # prodramp$day = floor(prodramp$t/24)
-  # prodrampday = prodramp %>%
-  #   group_by(day,scenario) %>%
-  #   summarise(daymaxramp = max(ramp),
-  #             dayminramp = min(ramp))
-  # 
-  # ggplot(prodrampday[prodrampday$daymaxramp >0,],aes(x=daymaxramp)) + geom_histogram() + 
-  #   scale_fill_viridis(discrete=T) + theme_bw() +
-  #   ggtitle("DR ramps only") + 
-  #   facet_wrap(~scenario)
-  # 
-  # ggplot(prodrampday[prodrampday$dayminramp >0,],aes(x=dayminramp, fill=scenario)) + geom_histogram() + 
-  #   scale_fill_viridis(discrete=T) + theme_bw() +
-  #   ggtitle("DR ramps only")+ 
-  #   facet_wrap(~scenario)
-  
   
   
   #---------------------------------
@@ -323,7 +253,6 @@ combineRunResults <- function(runID, runDate, graphs = T,
   
   ## plot marginal price ##
   prod2 = prod %>%
-    # merge(gendat[,c("Capacity","PMin","plantUnique","VCost","Fuel")], by.x = "GEN_IND", by.y = "plantUnique") %>%
     filter(MWout > 0) 
   prod_margprice = prod2 %>%
     group_by(t,scenario) %>%
@@ -355,30 +284,16 @@ combineRunResults <- function(runID, runDate, graphs = T,
   genbreakdown = fuelBreakdown(prod2,paste0(output_fol_base,"plots/"),runID)
   genbreakdown = select(genbreakdown, Fuel, prodFrac)
   genbreakdown$Fuel = paste0("GENFRAC-",genbreakdown$Fuel)
-  # paste0(base_fol,output_fol_base,"plots/")
-  rm(prod2) # memory mangement
+   rm(prod2) # memory mangement
   
   ## write fuelBreakdown to summary stats ##
   write.table(genbreakdown,sep=",", row.names = FALSE, col.names = FALSE, quote = FALSE,
               file = paste0(output_fol,"summary_stats",runID,".csv"),append=T)
   
-    #### TODO: collect cost information ####
-  
-  # need to infer costs from production, startup info
-  # and weight scenarios to find expected cost
-  
   #-------------------
   ## startup data / costs ####
   # differentiate by 1st stage (slow) and expected 2nd stage (fast)
   
-  # load slowstartup to identify slow generators
-  # TODO: different way of ID-ing slow gens that does not rely on slowstartup
-  #       do based on slowprod?
-  # slowstartup = loadTimeseriesData(output_fol,"slow_startup",overlaplength,1)
-  # slowstartup = slowstartup %>%
-  #   gather(key = "generator", value = "start", -t)
-  # 
-  # slowgens = unique(slowstartup$generator)
   speedslow = tibble(GEN_IND = slowgens, speed = "slow")
   
   # load and manipulate all startup data
@@ -386,8 +301,6 @@ combineRunResults <- function(runID, runDate, graphs = T,
     print("Loading startup data")
     allstartup = loadTimeseriesData(output_fol,"v_startup",overlaplength,
                                     2,instance_in_fol,params$nrandp,dist_ID = params$stochID, probabilities = F, endtrim=endtrim)
-    # allstartup$prob=1/params$nrandp
-    # getProbs = function(params,inputsfol,nscenarios)
     allprobs = getProbs(params, instance_in_fol, length(unique(prod$scenario)))
     allstartup = merge(as.data.table(allstartup), as.data.table(allprobs), by.x = c("scenario","nperiod"), by.y = c("scenarionum","periodnum"), all.x=T)
     
@@ -397,8 +310,7 @@ combineRunResults <- function(runID, runDate, graphs = T,
   } else {
     print("Loading v_startup_all.csv")
     allstartup = read_csv(file = paste0(output_fol,"fast_startup_all.csv"))
-    # allstartup$prob=1/params$nrandp
-    allstartup = select(allstartup, -prob)
+    allstartup = select(allstartup, -prob) #prev methods of calculating prob may have been wrong, recalculate
     print("starting getProbs")
     allprobs = getProbs(params, instance_in_fol, length(unique(prod$scenario)))
     print("finished getProbs")
@@ -406,15 +318,12 @@ combineRunResults <- function(runID, runDate, graphs = T,
     
   }
   
-  # allstartup = allstartup %>%
-    # merge(speedslow, by = "GEN_IND", all.x=T)
-  print("merge with gen speed info")
+   print("merge with gen speed info")
   allstartup = merge(as.data.table(allstartup), as.data.table(speedslow),by = "GEN_IND", all.x=T)
   allstartup$speed[is.na(allstartup$speed)] = "fast"
   fastsel = which(allstartup$speed == "fast")
   
   print("merge with other gen information")
-  # allstartup = merge(allstartup, gendat[,c("plantUnique","StartCost")], all.x=T, by.x = "GEN_IND", by.y = "plantUnique")
   allstartup = merge(as.data.table(allstartup), as.data.table(gendat[,c("plantUnique","StartCost")]), all.x=T, by.x = "GEN_IND", by.y = "plantUnique")
   
   # calculate expected cost
@@ -471,12 +380,10 @@ combineRunResults <- function(runID, runDate, graphs = T,
   # special case - check DR separately
   prod$speed[str_detect(prod$GEN_IND,"DR-")] = "DR"
   
-  # associate generator production cost
-  # prod = merge(as.data.table(prod), as.data.table(gendat[,c("plantUnique","VCost","PLC2ERTA")]), all.x=T,by.x="GEN_IND",by.y="plantUnique")
-  
+  # find expected costs, weighted by scenario probability
   prodcost = prod %>%
     mutate(expectedcost = MWout * VCost * prob,
-           expectedCO2 = MWout * PLC2ERTA * prob) %>% # double check units
+           expectedCO2 = MWout * PLC2ERTA * prob) %>% 
     group_by(speed,t) %>%
     summarise(ecost = sum(expectedcost),
               eco2 = sum(expectedCO2, na.rm = T))
@@ -491,7 +398,7 @@ combineRunResults <- function(runID, runDate, graphs = T,
     ggsave(filename = paste0(output_fol,"productioncosts_",runID,".png"), width = 7, height = 5)
   }
   
-  # sum across time
+  # sum expected costs across time
   prodcosttot = prodcost %>%
     group_by(speed) %>%
     summarise(ecost = sum(ecost),
@@ -539,7 +446,7 @@ combineRunResults <- function(runID, runDate, graphs = T,
   drfull = prod$MWout > 999 & prod$speed =="DR"
     
   # write to summary stats
-  write(paste0("all costs slow gens,",allcosttot$slow[1],"\n",
+  write(paste0("expected slow all costs,",allcosttot$slow[1],"\n",
                "expected fast all costs,",allcosttot$fast[1],"\n",
                "expected DR all costs,",allcosttot$DR[1],"\n",
                "expected Total costs,",sum(allcosttot$DR[1] + allcosttot$fast[1] +allcosttot$slow[1],na.rm=T),"\n",
@@ -552,16 +459,4 @@ combineRunResults <- function(runID, runDate, graphs = T,
   
   rm(allcosts,prodcost) # memory mangement
   
-  #---------------------------------
-  ## find CO2 emissions ####
-  # already merged CO2 emissions data into prod array above
-  
-  
-  
 }
-
-#---------------------------------
-## save a csv of key results ####
-
-
-# write to summary file the number of hours in simulation

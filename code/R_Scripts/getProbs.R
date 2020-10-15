@@ -2,6 +2,8 @@
 # Short function to return probabilities
 # of each run for each period
 # to be called by combineRunResults()
+#Sept 2020 Patricia Levi
+
 library(tidyverse)
 
 getProbs = function(params,inputsfol,nscenarios){

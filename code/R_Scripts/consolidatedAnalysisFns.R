@@ -16,27 +16,15 @@ library(lubridate)
 # source(paste0(base_fol,"/Julia_UC_Github/R_Scripts/mergeTimeseriesData.R")) # contains loadTimeseriesData
 ## 
 
-SHRLK = TRUE
-if(SHRLK){
-  baseFol = "/home/users/pjlevi/dr_stoch_uc/julia_ver/"
-  outputFolBase = "/home/groups/weyant/plevi_outputs/"
-  # outputFolBase = "/home/users/pjlevi/dr_stoch_uc/julia_ver/outputs/"
-  inputFol = "inputs/"
-  scriptsFol = "code/"
-  source(paste0(baseFol,"code/R_Scripts/mergeTimeseriesData.R")) # contains loadTimeseriesData()
-} else{
-  baseFol = "/Users/patricia/Documents/Google Drive/stanford/Value of DR Project/"
-  outputFolBase = "/Users/patricia/Documents/Google Drive/stanford/Value of DR Project/Data/julia_output/forIAEE_1Pmin/"
-  inputFol = "Data/julia_input/"
-  scriptsFol = "Julia_UC_Github/Julia_scripts/"
-}
-# New naming convention: baseFol for scripts, base_fol within functions
+baseFol = "~/dr_stoch_uc/"
+outputFolBase = "/home/groups/weyant/plevi_outputs/"
+inputFol = "inputs/"
+scriptsFol = "code/"
+source(paste0(baseFol,"code/R_Scripts/mergeTimeseriesData.R")) # contains loadTimeseriesData()
 
 
 # costByTimestep(runID, runDate, instance_in_fol, default_in_fol)
 costByTimestep = function(runID, runDate,  
-                          # inputfolID, #e.g. 5d_6o-keyDays2
-                          # outputfolID, # e.g. paste0(runIDs[r],"_",runDates[r])
                           instanceFol,# e.g. "/home/users/pjlevi/dr_stoch_uc/julia_ver/inputs/5d_6o_keyDays2/" (instance_in_fol)
                           default_in_fol,  # e.g. "/home/users/pjlevi/dr_stoch_uc/julia_ver/inputs/ercot_default/"
                           scripts_fol = scriptsFol, # e.g. "code/"
@@ -79,20 +67,13 @@ costByTimestep = function(runID, runDate,
        ## Somehow including this messes up the merge later...!
         ## so fast generators are NA for speed in commitment
   
-  # for SDEV
-  # prod = prod[prod$t<2000,] 
-  # allstart = allstart[allstart$t<2000,]
-  
   # # merge gendat with prod
   prod2 = merge(as.data.table(prod), as.data.table(gendat[,c("GEN_IND","VCost","StartCost","Fuel")]), by = "GEN_IND", all.x=T)
-  # prod2 = merge(prod, gendat, by = "GEN_IND", all.x=T)
-  # rm(prod)
-  
+
   # merge gen with commit
   start2 = merge(as.data.table(allstart), as.data.table(gendat[,c("GEN_IND","VCost","StartCost","Fuel","speed")]), by = "GEN_IND", all.x=T) 
   start2 = rename(start2, startup = value)
-  # rm(allstart)
-  
+
   # calculate $/prod, $/commit
   prod2$prodcost = as.numeric(prod2$MWout) * as.numeric(prod2$VCost)
   start2$startcost = as.numeric(start2$startup) * as.numeric(start2$StartCost)
@@ -107,9 +88,7 @@ costByTimestep = function(runID, runDate,
   
   # merge prod, commit, add up
   allcost = merge(as.data.frame(prod3),as.data.frame(start3), by = c("t","scenario","nperiod"), all.x=T, all.y=T) ##speed
-  #Maybe need to add more in 'by' to prevent lots of .x, .y? test with short sets 
-  # some NAs introduced by merge
-  
+ 
   # calculate summary stats for $/t across scenarios
   # replace NAs with 0
   allcost$totprodcost[is.na(allcost$totprodcost)] = 0
@@ -157,7 +136,6 @@ costByTimestep = function(runID, runDate,
   ggplot(allcost, aes(x = rankt, y = totcost, color = scenario)) +
     facet_wrap(~nperiod, scales="free_x")+
     geom_line() + theme_minimal() +
-    # geom_vline(xintercept = jumps+0.5, color = "red", linetype="dotted")+
     ggsave(paste0(plot_fol, runID,"_allcost.png"),width = 20, height = 20)
     
 }
@@ -200,8 +178,7 @@ eventStats = function(runID, runDate, output_fol_base = outputFolBase){
   # scenarios are in order
   # t is strictly increasing except when we swich to next scenario
   drdat2$tdiffs = c(0,diff(drdat2$t))
-  # breaks2 = which(drdat2$tdiffs > 1 | drdat2$tdiffs < 0) #indicates first row of event
-  
+ 
   drdat2$eventStart = -1
   drdat2$eventStart[drdat2$tdiffs == 1] = 0
   drdat2$eventStart[drdat2$tdiffs != 1] = 1
@@ -211,9 +188,6 @@ eventStats = function(runID, runDate, output_fol_base = outputFolBase){
   eventdat = drdat2 %>%
     group_by(scenario,scenarionum) %>%
     summarise(nevents = length(unique(eventnum)))
-  # TODO: test this with a dataset that isn't advNot3 so that there should be differing #s of events in each scenario
-  # if(length(unique(eventdat$nevents)) > 1){
-    # binw = round((max(eventdat$nevents) - min(eventdat$nevents)/20),2)
     ggplot(eventdat,aes(x = nevents)) + theme_minimal() +
       geom_histogram(binwidth = 1,color = "black", fill = "light grey") +
       labs(title = paste("Distribution of number events across scenarios",runID),
@@ -221,11 +195,7 @@ eventStats = function(runID, runDate, output_fol_base = outputFolBase){
            y = "number of scenarios") +
       coord_cartesian(xlim  = c(10,75)) +
       ggsave(paste0(plot_fol,"eventNum_hist_",runID,"_",runDate,".png"), width = 6, height = 5)
-  # } else {
-    # print("All scenarios have the same number of events")
-  # }
 ## identify length of each event and plot ##
-  # Try using group_by(event_number) %>% summarise(eventlength = n())
   eventlength = drdat2 %>%
     group_by(eventnum, scenarionum) %>% 
     summarise(length = n())
@@ -272,8 +242,7 @@ eventStats = function(runID, runDate, output_fol_base = outputFolBase){
     ggsave(paste0(plot_fol,"event_dispatchedHours_hist_",runID,"_",runDate,".png"), width = 6, height = 5)
   
   
-  # create a DF of output data
-  
+  # TODO: create a DF of output data
   # save output DF somewhere
   
 }
@@ -439,11 +408,9 @@ plotallCO2 = function(folder,searchString,saveas  = "all_co2_boxplot",
     
     if(i==1){
       allco2 = co2emit2
-      # allco2_bygen = co2emit_sum
       allco2_byspd = co2_intermediate
     } else {
       allco2 = rbind(allco2,co2emit2)
-      # allco2_bygen = rbind(allco2_bygen,co2emit_sum)
       allco2_byspd = rbind(allco2_byspd,co2_intermediate)
     }
 
@@ -478,6 +445,7 @@ if(plots){
 }
  return(co2_speed)
 }
+# to test:
 # source("./consolidatedAnalysisFns.R")
 # plotallCO2(folder = "/home/groups/weyant/plevi_outputs/", searchString = "*_o25*keyDays2*")
 # co2_wide = pivot_wider(co2,names_from = "speed", values_from = c("co2mean","co2min","co2max"))
@@ -489,6 +457,7 @@ if(plots){
 #TODO: have demand, vdem be inputs
 
 # from Nov 20, 2019 commit -  ie before  I tried to edit plotDRUse to plot all periods at once
+# just plots one period
 plotDRUse = function(runID,runDate,drcommit,
                      inputfolID, outputfolID,
                      scenarios = 1:10, # what scenarios will be graphed
@@ -539,11 +508,6 @@ plotDRUse = function(runID,runDate,drcommit,
     return()
   }
   
-  # load DR production
-  # drprod = loadTimeseriesData(output_fol,"DR_production",overlaplength,2, probabilities=F,instance_in_fol,params$nrandp,dist_ID = params$stochID, endtrim)
-  # drprod = drdat %>% select(t,scenario,nperiod,GEN_IND,value.prod,scenarionum) %>% rename(value = value.prod)
-  # drcommit = #TODO
-  
   # ID key stats about the period we are asked to graph
   periodinfo = strsplit(period,"p|_")[[1]] 
   numperiod=as.numeric(periodinfo[2])
@@ -574,13 +538,7 @@ plotDRUse = function(runID,runDate,drcommit,
     ggsave(paste0(plot_fol,runIDs[r],"_",period,"_demand_DRproduction.png"),width = 10, height=7)
   
   # plot dr commitment
-  # drcomtoneperiod = filter(drcommit, nperiod == numperiod)
-  # drcomtoneperiod$scenarionum = substr(drcomtoneperiod$scenario,2,4)
-  # demcomt = merge(demreal, drcomtoneperiod, by=c("t","scenarionum"))
-  # print(names(demcomt))
-  # print(head(demcomt))
-  
-  ggplot(filter(alldat,scenarionum %in% scenarios))+ 
+   ggplot(filter(alldat,scenarionum %in% scenarios))+ 
     facet_wrap(~scenario.x) + 
     geom_line(aes(x=t-min(t), y=(value.commit*10000)+30000), color="blue")+
     geom_line(aes(x=t-min(t),y=demand)) +
@@ -589,10 +547,6 @@ plotDRUse = function(runID,runDate,drcommit,
     ggsave(paste0(plot_fol,runIDs[r],"_",period,"_demand_DRcommitment.png"),width = 10, height=7)
   
   # plot both together
-  # demprod = rename(demprod, production = value)
-  # drcomtoneperiod = rename(drcomtoneperiod, commitment = value)
-  # dralldata = merge(drcomtoneperiod, demprod, by=c("t","scenarionum"))
-  # print(names(dralldata))
   ggplot(filter(alldat,scenarionum %in% scenarios))+ 
     facet_wrap(~scenario.x) + 
     geom_line(aes(x=t-min(t), y=(value.prod*10)+30000), color="blue")+
@@ -604,7 +558,7 @@ plotDRUse = function(runID,runDate,drcommit,
   
   
   ### Summarise all scenarios togetether ###
-  scenmean = alldat %>%#dralldata %>%
+  scenmean = alldat %>%
     group_by(t) %>%
     dplyr::summarise(p_commit = mean(value.commit),
               mean_prod = mean(value.prod),
@@ -628,12 +582,9 @@ plotDRUse = function(runID,runDate,drcommit,
     ggtitle(paste(runIDs[r], paste("Period",numperiod,"mean/min/max DR production with mean commitment in red"))) #+
   dr +  ggsave(paste0(plot_fol,runIDs[r],"_",period,"_DR_prob.png"),width = 10, height=7)
   
-  # multplot = ggarrange(dp, dr, nrow = 2) 
-  # ggexport(multplot, filename = paste0(plot_fol,runIDs[r],"_",period,"_DR_demand_prob.png"), 
-  #          align = "v", width = 800, height = 560)
 }
 
-
+# THIS DOESNT WORK YET
 plotDRUse_all_underconstruction = function(runID,runDate,
                      inputfolID, outputfolID,
                      scenarios = 1:5, # what scenarios will be graphed
@@ -668,12 +619,8 @@ plotDRUse_all_underconstruction = function(runID,runDate,
   
   if("overlaplength" %in% names(params)) {overlaplength = params$overlaplength}
   
-  # if(is.null(endtrim)){
-    endtrim = overlaplength/2
-    print(paste("endtrim set to", endtrim))
-  # }
-  
-  ##
+  endtrim = overlaplength/2
+  print(paste("endtrim set to", endtrim))
   
   # load DR production
   drprod = loadTimeseriesData(output_fol,"DR_production",overlaplength,2, probabilities=F,instance_in_fol,params$nrandp,
@@ -751,11 +698,6 @@ fuelBreakdown = function(prodgendat,plotfol,runName,plots=T){
   # optionally saves a bar chart with that information
   # Patricia Levi March 2019
   
-  #prodgenDat should be "prod2" i.e. prod merged with gendat[,c("Fuel")]
-  # prod2 = prod %>%
-  #   merge(gendat[,c("Capacity","PMin","plantUnique","VCost","Fuel")], by.x = "GEN_IND", by.y = "plantUnique") %>%
-  #   filter(MWout > 0) 
-  
   prod_expected = prodgendat %>%
     group_by(GEN_IND,t,Fuel) %>%
     summarise(eProd = sum(prob * MWout))
@@ -792,20 +734,6 @@ rampInfo = function(prodgendat,runName){
   REsel = which(prodgendat$Fuel %in% c("DR","SOLAR","WIND")) # do I want to include Hydro in here? Nah
   prodgendat$REgen = F
   prodgendat$REgen[REsel] = T
-  
-  # ramp by SPEED -- not that meaningful since RE is included in there
-  # find ramp by scenario, speed, timestep
-  # prodrampspeed = prodgendat %>%
-  #   group_by(scenario,speed,t) %>%
-  #   summarise(MWtot = sum(MWout)) %>%
-  #   group_by(scenario,speed) %>%
-  #   mutate(ramp = MWtot - lag(MWtot, default=0))%>%
-  #   group_by(speed) %>%
-  #   summarise(maxramp = max(ramp),
-  #             minramp = min(ramp))
-  
-  # need to weight scenarios to find expected ramp? what is meaningful? max expected ramp or max possible ramp?
-  # theyre both meaningful. But for now just doing max possible ramp
   
   # ramp by non-RE
   # find ramp by scenario, RE, timestep

@@ -1,11 +1,11 @@
 # mergeTimeseriesData.R
-# reads in timeseries data from multi-period runs
+# contains loadTimeseriesData() which reads in timeseries data from multi-period runs
 # and concatenates it into one file
 
 # loadTimeseriesData reads in the designated type of timeseries data
 # and merges multiple periods into one dataframe
 
-# loadproduction is its precursor, which load slow and fast production data
+# loadproduction(), also included, is its precursor, which load slow and fast production data
 # concatenates them, and merges multiple periods
 
 # loadTimeseriesData()
@@ -16,11 +16,6 @@
 
 library(tidyverse)
 library(data.table)
-
-### KLUDGE ###
-# this is to select just the periods I wanted this one time
-# allowedperiods = read.csv(paste0("/Users/patricia/Documents/Google Drive/stanford/Value of DR Project/Data/julia_output/base_2019-02/","periods_overlap_base_advNot2.csv"))
-########
 
 loadTimeseriesData <- function(output_fol, dataType, overlap = NULL, dataStage, input_fol, nscen,
                                probabilities = T,dist_ID,endtrim = NULL,beginningtrim=NULL,

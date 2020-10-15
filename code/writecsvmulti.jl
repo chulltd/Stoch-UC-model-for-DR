@@ -1,4 +1,4 @@
-# short helper fn for ercot_stoch
+# short helper fn for ercot_stoch that formats the name appropriately
 
 function writecsvmulti(output,folder,name,multitf,periodID)
     if multitf

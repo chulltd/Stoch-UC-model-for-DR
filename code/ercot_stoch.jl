@@ -1,20 +1,24 @@
-# ercot_stoch.jl
-# solves the full universe version of a stochastic two stage
-# unit-commitment model in which slow generators are committed in the
-# first stage and fast generators can be committed in real time.
-# Demand response functions as a slow generator with an advance commmitment
-# not only of startup but also to a generation schedule
-# The only uncertainty modeled is that of the actual DR generation
-# The availability of DR can be restricted by the last four command line args
+#= ercot_stoch_reliability.jl
+solves the a stochastic two stage unit-commitment model in which slow generators
+are committed in the first stage and fast generators can be committed in real time.
+Uses formulation based on Papavasiliou and Oren (2013).
+Demand response can function as a slow generator with an advance commmitment
+and an advane production schedule if desired.
+Uncertainty comes from total demand.
 
-# cmd line format should be:
-# include("ercot_stoch.jl") <date> <inputs_file_name> <multi-runTF> <period_name>
-# last four are "0" if switch is not used
+cmd line format should be:
+julia ercot_stoch_reliability.jl <date> <inputs_file_name.csv> <multi-runTF> <period_name>
 
-# Written under Julia 0.6.4
-# Patricia Levi
-# pjlevi@stanford.edu
-# NOV 2018
+multi-runTF is usually true: it indicates that the current simulation is one time
+period of a group of periods that make up a single simulation. This just affects
+the file structure.
+
+Written under Julia 0.6.4
+Patricia Levi
+pjlevi@stanford.edu
+NOV 2018
+=#
+
 
 ### Packages ###
 using JuMP
@@ -34,16 +38,16 @@ test = Gurobi.Env() # test that gurobi is working
 
 # USER PARAMS #
 no_vars = false #stops execution before making variables
-# debug = true  # stops execution before solving model
+debug = false  # stops execution before solving model
 
-sherlock_fol = "/home/users/pjlevi/dr_stoch_uc/julia_ver/"
+sherlock_fol = "~/dr_stoch_uc/"
 sherlock_input_file = "inputs/"
 sherlock_output_file = "outputs/"
 sherlock_params_fol = "code/"
-laptop_fol = "/Users/patricia/Documents/Google Drive/stanford/Value of DR Project/"
-laptop_input_file = "Data/julia_input/"
-laptop_output_file = "Data/julia_output/"
-laptop_params_fol = "Julia_UC_Github/Julia_scripts/"
+laptop_fol = "~/Documents/dr_stoch_uc/"
+laptop_input_file = "inputs/"
+laptop_output_file = "outputs/"
+laptop_params_fol = "code/"
 
 dr_gens = ["DR"]
 notdr_gens = ["BIOMASS","COAL","GAS","GAS_CC","GAS_CT","GAS_ICE","GAS_ST","HYDRO",
@@ -86,13 +90,6 @@ if nargs == 5
     input_version = localARGS[3]
     multiTF = parse(Bool,lowercase(localARGS[4]))
     periodID = localARGS[5]
-# elseif nargs == 3
-#     submitdate = localARGS[1]
-#     input_file_name = localARGS[2]
-#     multiTF = parse(Bool,lowercase(localARGS[3]))
-#     if !multiTF
-#         error("If doing a multi-period run, need period ID")
-#     end
 elseif nargs > 5
     error(string("Too many arguments supplied. Need ",join(ARGNAMES[1,:]," ")))
 elseif nargs <5
@@ -168,13 +165,6 @@ dem = dem2[hours,2]
 # --------------------------------------------------------------------------------------
 # STOCHASTIC VARIABLE DATA
 # -------------------------------------------
-# Test data:
-# vdr = [0.9,1,1.1]
-# pro = [0.25,0.5,0.25]
-# probs = CSV.read(string(default_data_fol , "dist_input_",stochID,".csv"))
-# vdr_in = convert(Array,probs[1,:]) # converts the first row of probs to an Array
-# pro_in = rationalize.(convert(Array,probs[2,:])) #to avoid rounding issues later
-    # if this becomes a problem, look into https://github.com/JuliaMath/DecFP.jl
 
 ## Net Demand uncertainty ##
 
@@ -200,10 +190,6 @@ end
 println("sum of probabilities is ", sum(pro))
 n_omega = length(pro) #redefine for new number of scenarios
 
-# to check vdr and p are constructed properly
-# writecsv("vdr_test.csv",vdr)
-# writecsv("p_test.csv",pro')
-
 # Set up demand realizations matrix dem_real[t,o]
 dem_real = dem .* vdem
 
@@ -217,16 +203,6 @@ genset = CSV.read(string(default_data_fol,inputs[1,:genFile]), missingstring ="N
 # genset[Symbol("Plant Name")] # this is how to access by column name if there are spaces
 # names(genset) # this is how to get the column names
 # anscombe[:,[:X3, :Y1]]  #how to grab several columns by colname
-
-# how do I select which rows match one of a set of strings?
-# in("c",["a","b","c"]) # ask if "c" is contained in set of interest
-# useful: https://cbrownley.wordpress.com/2015/07/26/intro-to-julia-filtering-rows-with-r-python-and-julia/
-#          data_frame_value_in_set =
-#           data_frame[findin(data_frame[:quality], set_of_interest), :]
-
-# x = ["a","b","c"]
-# set_interest = ["c"]# for this to work must have the []
-# findin(x,set_interest)
 
 dr_ind = findin(genset[:Fuel],dr_gens)
 slow_ind = findin(genset[:Speed],["SLOW"])
@@ -315,7 +291,7 @@ GEN_NODR = findin(genset[:Fuel],notdr_gens)
 GF = fast_ind
 GSL = slow_ind #slow generators
 GDR = dr_ind #DR generators
-# need an index for where the DR is in the slow generators
+# index for where the DR is in the slow generators
 GDR_SL_ind = findin(GSL,GDR)
 
 # -------------------------------------------
@@ -370,9 +346,6 @@ end
 #SUPPLY-DEMAND
 @constraint(m,supplydemand[t=1:n_t, o=1:n_omega],
     sum( p[g,t,o] for g=1:n_g) >= dem_real[t,o])
-#DEMAND RAND
-# @constraint(m, dem_rand[t=TIME, o = SCENARIOS],
-#     dem_real[t,o] = dem[t] * vnd[t,o]) #THIS DOESNT NEED TO BE A CONSTRAINT?
 
 #GENMIN
 @constraint(m, mingen[g= 1:n_g, t= 1:n_t, o=1:n_omega ],
@@ -408,16 +381,6 @@ end
 @constraint(m,[g = 1:n_gsl, t = TIME, o = SCENARIOS],
     u[GSL[g],t,o] == w[g,t])
 
-#DR_RAND
-#think carefully about how to index into p and p_dr
-#e.g. need to get from [5,7] for p to [1,2] for p_dr
-# one workaround is p[g=GDR,t,o] being its own variable.
-# would need to change SUPPLY-DEMAND, GENMAX, and potentially startup/commitment too,
-# since these rely on the GENERATORS index...
-
-# @constraint(m, dr_rand[g=1:n_gdr,t = TIME, o = SCENARIOS],
-#      p[GDR[g],t,o] == p_dr[g,t] * vdr[t,o])
-
 #STARTUP COUNT
 @constraint(m, [g=GENERATORS, t = TIME, o = SCENARIOS],
     start_num[g,t,o] >= v[g,t,o])
@@ -429,8 +392,6 @@ if ramplims !=0
 end
 
 # ------ DR USAGE LIMITS
-# Require that each period starts at the beginning of a new day
-# to simplify computation
 
 #STARTLIM
 # number of startups per period
@@ -442,7 +403,6 @@ if startlim !=0
     @constraint(m,limstart[g = 1:n_gdr, o = SCENARIOS],
         sum(start_num[GDR[g],t,o] for t = TIME) <= startlim)
 end
-#uses z, the first stage startup var - corresponds to slow DR
 
 #HOURLIM
 #number of hours used per period
@@ -454,7 +414,6 @@ if hourlim != 0
     @constraint(m,limhrs[g = 1:n_gdr, o = SCENARIOS],
         sum(u[GDR[g],t,o] for t = TIME) <= hourlim)
 end
-#uses w, the first stage startup var - corresponds to slow DR
 
 #ENERGYLIM
 # amount of energy used per period
@@ -484,7 +443,6 @@ if durationlim != 0
 end
 
 ### OBJECTIVE ###
-# @objective(m, Max, 5x + 3*y )
 @objective(m, Min, sum(pro[o] *
     sum(start_num[g,t,o]*startup[g] + p[g,t,o]*varcost[g] for g = GENERATORS, t = TIME)
     for o = SCENARIOS))
@@ -513,21 +471,7 @@ writecsvmulti(read_inputs,output_fol,"inputfile",multiTF,periodsave)
 # SAVE OUTPUT
 # -------------------------------------------
 
-# save workspace: m and certain inputs
-# vdr, pro, pf, varcost, various indices...
-# try
-#     @save string(output_fol,"workspace.jld2") m vdr pro p
-# end
-
-# check production
-# print("schedule of DR")
-# x = getvalue(p)
-# x_df = DataFrame(transpose(x))
-# names!(x_df,[Symbol("$input") for input in genset[:plantUnique]])
-# CSV.write(string(output_fol,"production_schedule.csv"), x_df)
-
-# display(x)
-# print("production of DR:")
+# production of DR
 y = getvalue(p[GDR,:,:])
 
 if DRtype != 0
@@ -537,8 +481,7 @@ if DRtype != 0
     writecsvmulti(y_out,output_fol,"DR_production",multiTF,periodsave)
 end
 
-# display(y)
-# print("production of slow generators:")
+# production of slow generators
 zs = getvalue(p[GSL,:,:])
 
 y_out = convert3dto2d(zs,1, 3, 2,
@@ -547,58 +490,43 @@ y_out = convert3dto2d(zs,1, 3, 2,
 writecsvmulti(y_out,output_fol,"slow_production",multiTF,periodsave)
 
 
-# display(zs)
-# print("production of fast generators:")
+# production of fast generators
 zf = getvalue(p[GF,:,:])
 y_out = convert3dto2d(zf,1, 3, 2,
     vcat([String("o$i") for i in 1:n_omega],"GEN_IND","t"),
      genset[fast_ind,:plantUnique])
 writecsvmulti(y_out,output_fol,"fast_production",multiTF,periodsave)
 
-# display(zf)
-
-# check commitment
-# print("commitment of slow generators:")
-# display(getvalue(w))
+# commitment of slow generators
 w_out = getvalue(w)
 wdf = DataFrame(transpose(w_out))
 names!(wdf,[Symbol("$input") for input in genset[slow_ind,:plantUnique]])
 writecsvmulti(wdf,output_fol,"slow_commitment",multiTF,periodsave)
 
-# print("commitment of all generators")
-# display(getvalue(u))
+# commitment of all generators
 u_out = getvalue(u)
 y_out = convert3dto2d(u_out,1, 3, 2,
     vcat([String("o$i") for i in 1:n_omega],"GEN_IND","t"),
      genset[:plantUnique])
 writecsvmulti(y_out,output_fol,"u_commitment",multiTF,periodsave)
 
-# print("startup of all generators")
-# display(getvalue(v))
+# startup of all generators
 v_out = getvalue(v)
 y_out = convert3dto2d(v_out,1, 3, 2,
     vcat([String("o$i") for i in 1:n_omega],"GEN_IND","t"),
      genset[:plantUnique])
 writecsvmulti(y_out,output_fol,"v_startup",multiTF,periodsave)
 
-# check costs
-# print("total cost")
+# costs
 totcost = getvalue(sum(pro[o] *
     sum(start_num[g,t,o]*startup[g] + p[g,t,o]*varcost[g] for g = GENERATORS, t = TIME)
     for o = SCENARIOS))
-# display(totcost)
-# print("startup cost")
-# display("text/plain",getvalue(start_cost))
-# print("fraction of total costs that are startup costs")
 totstartupcost = getvalue(sum(pro[o] *
     sum(start_num[g,t,o]*startup[g] for g = GENERATORS, t = TIME)
     for o = SCENARIOS))
-# display("text/plain",totstartupcost/totcost)
-# print("fraction of total costs that are var cost")
 totvarcost = getvalue(sum(pro[o] *
     sum(p[g,t,o]*varcost[g] for g = GENERATORS, t = TIME)
     for o = SCENARIOS))
-# display("text/plain",totvarcost/totcost)
 
 output_summary = DataFrame(TotalCost = totcost, TotStartupCst = totstartupcost,
                             TotVarCst = totvarcost,
@@ -610,6 +538,7 @@ output_summary = DataFrame(TotalCost = totcost, TotStartupCst = totstartupcost,
 writecsvmulti(output_summary,output_fol,"summary_stats",multiTF,periodsave)
 
 # Get dual variables and save
+# only works if the problem is linear - cannot have binary variables
 if !trueBinaryStartup
     #supplydemand #2D
     sd_shadow = DataFrame(getdual(supplydemand))

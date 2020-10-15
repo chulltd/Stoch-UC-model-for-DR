@@ -1,12 +1,15 @@
-#combine_scenarios.jl
 #=
-Sept 2019
-
 Takes two sets of scenarios: demand and DR reliability - and combines them.
-Creates pro, vdr, and vdem
-
+Creates pro, vdr, and vdem csv files.
+Inputs:
+dr_scenarios: the response of DR in each timestep for each scenario, as a fraction of desired response
+dr_p: the probability of each scenario in dr_scenarios
+nd_scenarios: total demand in each timestep for each scenario
+nd_p: probability of each scenario in nd_scenarios
+This function is called by the main model (ercot_stoch.jl)
+combine_scenarios.jl
+Sept 2019, Patricia Levi
 =#
-
 function combine_scenarios(dr_scenarios, dr_p, nd_scenarios, nd_p)
 
     if size(dr_scenarios,1) != size(nd_scenarios,1)
@@ -43,5 +46,3 @@ function combine_scenarios(dr_scenarios, dr_p, nd_scenarios, nd_p)
 
     return(vdr,vnd,prob_array)
 end
-
-#test

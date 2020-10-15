@@ -1,16 +1,19 @@
-#convert3dto2d
-# function that flattens a 3d array to a 2d dataframe with colnames
-# and adds an additional column to indicate which slice of the lost
-# dimension each row came from, and another additional column to indicate
-# which row of the lost dimension
-# Patricia Levi July 2018
-
+#=convert3dto2d
+function that flattens a 3d array to a 2d dataframe with colnames
+and adds an additional column to indicate which slice of the lost
+dimension each row came from, and another additional column to indicate
+which row of the lost dimension
+inputs: array3d: array to be flattened,
+    ind_dim: dimension that gets the column indicator
+    y_dim: dimension to be vertical,
+    x_dim: dimension to be horizonal
+    colnames: set of column names
+    indnames: names to indicate levels of flattened dimension
+Called by main model for writing model outputs to csv
+checks that the lengths of testnames, DRNAMES are appropriate and returns a dataframe
+Patricia Levi July 2018
+=#
 function convert3dto2d(array3d,ind_dim,x_dim,y_dim,colnames,indnames)
-    # ---- inputs: array, dimension that gets the column indicator,
-    # ----         dimension to be vertical, dimension to be horizonal
-    # ----         set of column names
-    # ---- checks that the lengths of testnames, DRNAMES are appropriate
-    # ---- and returns a dataframe
     if length(indnames) != size(array3d,ind_dim)
         error("indnames must have same length as ind_dim")
     end
